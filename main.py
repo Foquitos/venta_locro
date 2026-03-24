@@ -1,11 +1,34 @@
-from fastapi import FastAPI, Request, Form, HTTPException
+import secrets
+from fastapi import FastAPI, Request, Form, HTTPException, Depends, status
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from contextlib import asynccontextmanager
 import sqlite3
 import re
+import csv
+import io
+from fastapi import Response # Agrega 'Response' a tus importaciones de fastapi
+from openpyxl import Workbook
 
 DB_FILE = "ventas_locro.db"
+
+# --- NUEVO: Configuración de Seguridad ---
+security = HTTPBasic()
+
+def verificar_credenciales(credentials: HTTPBasicCredentials = Depends(security)):
+    # Aquí defines tu usuario y contraseña. Usa secrets para mayor seguridad interna.
+    usuario_correcto = secrets.compare_digest(credentials.username, "admin")
+    password_correcto = secrets.compare_digest(credentials.password, "siemprelistos")
+    
+    if not (usuario_correcto and password_correcto):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Usuario o contraseña incorrectos",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
+# -----------------------------------------
 
 # 1. Configuración de la Base de Datos
 def init_db():
@@ -29,7 +52,6 @@ def init_db():
         ''')
         conn.commit()
 
-# Ciclo de vida de la app: Crea la tabla al arrancar el servidor
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
@@ -69,7 +91,6 @@ async def procesar_venta(
     pago: str = Form(...),
     mail: str = Form(None)
 ):
-    # Validaciones
     nombre_limpio = nombre.strip().title()
     apellido_limpio = apellido.strip().title()
     telefono_limpio = limpiar_telefono(telefono)
@@ -85,7 +106,6 @@ async def procesar_venta(
 
     total_a_pagar = calcular_precio(cantidad)
 
-    # Guardar en SQLite
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
         cursor.execute('''
@@ -94,7 +114,6 @@ async def procesar_venta(
         ''', (vendedor, nombre_limpio, apellido_limpio, telefono_limpio, mail, entrega, direccion, cantidad, total_a_pagar, pago))
         conn.commit()
 
-    # Mensaje de éxito simple (puedes cambiarlo por un HTML de éxito luego)
     return {
         "mensaje": "¡Venta registrada con éxito!",
         "vendedor": vendedor,
@@ -103,24 +122,21 @@ async def procesar_venta(
         "total_a_cobrar": f"${total_a_pagar}"
     }
 
-# Agrega esto al final de tu main.py
-
+# --- NUEVA RUTA PROTEGIDA ---
+# Nota el "Depends(verificar_credenciales)"
 @app.get("/admin_scout", response_class=HTMLResponse)
-async def panel_admin(request: Request):
+async def panel_admin(request: Request, usuario: str = Depends(verificar_credenciales)):
     with sqlite3.connect(DB_FILE) as conn:
-        # Esto hace que SQLite devuelva las filas como diccionarios, 
-        # ideal para leerlos fácil en el HTML
         conn.row_factory = sqlite3.Row 
         cursor = conn.cursor()
         
-        # Traemos todas las ventas, ordenadas por la más reciente
         cursor.execute("SELECT * FROM ventas ORDER BY fecha DESC")
         ventas = cursor.fetchall()
         
-        # Calculamos algunos totales rápidos en Python
+        # Ojo: si no hay ventas todavía, sum() tiraría error si no le pasamos un valor por defecto, 
+        # pero en Python los generadores vacíos devuelven 0, así que estamos bien.
         total_porciones = sum(venta["cantidad"] for venta in ventas)
         total_plata_general = sum(venta["total"] for venta in ventas)
-        # Sumamos solo la plata de los que marcaron "pagado"
         total_recaudado_real = sum(venta["total"] for venta in ventas if venta["pago"] == "pagado")
         plata_a_cobrar = total_plata_general - total_recaudado_real
 
@@ -135,3 +151,67 @@ async def panel_admin(request: Request):
             "plata_a_cobrar": plata_a_cobrar
         }
     )
+
+@app.get("/descargar_csv")
+async def descargar_csv(usuario: str = Depends(verificar_credenciales)):
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        # Traemos todas las ventas
+        cursor.execute("SELECT * FROM ventas ORDER BY fecha DESC")
+        ventas = cursor.fetchall()
+        
+        # Obtenemos los nombres de las columnas para el encabezado del Excel
+        nombres_columnas = [description[0] for description in cursor.description]
+
+    # Creamos un archivo de texto en la memoria RAM
+    output = io.StringIO()
+    # Usamos punto y coma (;) porque el Excel configurado en Argentina 
+    # suele separar las columnas así por defecto.
+    writer = csv.writer(output, delimiter=';') 
+
+    # Escribimos la primera fila con los títulos
+    writer.writerow(nombres_columnas)
+    
+    # Escribimos todas las filas de ventas
+    for venta in ventas:
+        writer.writerow(venta)
+
+    # Preparamos la respuesta para que el navegador entienda que es una descarga
+    response = Response(content=output.getvalue(), media_type="text/csv")
+    response.headers["Content-Disposition"] = 'attachment; filename="ventas_locro_scout.csv"'
+    
+    return response
+
+@app.get("/descargar_excel")
+async def descargar_excel(usuario: str = Depends(verificar_credenciales)):
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        # Traemos todas las ventas
+        cursor.execute("SELECT * FROM ventas ORDER BY fecha DESC")
+        ventas = cursor.fetchall()
+        
+        # Obtenemos los nombres de las columnas
+        nombres_columnas = [description[0] for description in cursor.description]
+
+    # Creamos un libro de Excel en memoria
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Ventas Locro"
+
+    # Agregamos la fila de los encabezados
+    ws.append(nombres_columnas)
+
+    # Agregamos todas las filas de ventas
+    for venta in ventas:
+        ws.append(venta)
+
+    # Guardamos el Excel en un archivo binario en memoria (BytesIO)
+    output = io.BytesIO()
+    wb.save(output)
+
+    # Preparamos la respuesta indicando que es un archivo .xlsx
+    media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    response = Response(content=output.getvalue(), media_type=media_type)
+    response.headers["Content-Disposition"] = 'attachment; filename="ventas_locro_scout.xlsx"'
+    
+    return response

@@ -73,6 +73,20 @@
         .badge-debe { background-color: #f8d7da; color: #721c24; }
         .badge-delivery { background-color: #cce5ff; color: #004085; }
         .badge-retiro { background-color: #e2e3e5; color: #383d41; }
+        .btn-descargar {
+            display: inline-block;
+            background-color: #28a745;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .btn-descargar:hover {
+            background-color: #218838;
+        }
     </style>
 </head>
 <body>
@@ -97,6 +111,10 @@
             <h3>Recaudación Proyectada</h3>
             <div class="valor">${{ total_plata_general }}</div>
         </div>
+    </div>
+
+    <div style="text-align: right;">
+        <a href="/descargar_excel" class="btn-descargar">📥 Descargar Planilla Excel (.xlsx)</a>
     </div>
 
     <div class="table-responsive">
