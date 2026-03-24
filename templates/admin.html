@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Panel de Control - Locro</title>
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -87,6 +89,27 @@
         .btn-descargar:hover {
             background-color: #218838;
         }
+
+        /* Botones de acción CRUD */
+        .btn-action {
+            padding: 5px 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+            color: white;
+            margin-right: 5px;
+        }
+        .btn-edit { background-color: #ffc107; color: #212529; }
+        .btn-delete { background-color: #dc3545; }
+        .btn-add { background-color: #007bff; color: white; padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;}
+
+        .section-title {
+            margin-top: 40px;
+            border-bottom: 2px solid #dee2e6;
+            padding-bottom: 10px;
+        }
     </style>
 </head>
 <body>
@@ -113,6 +136,24 @@
         </div>
     </div>
 
+    <h2 class="section-title">Gestión de Vendedores</h2>
+    <div style="margin-bottom: 20px;">
+        <button class="btn-add" onclick="agregarVendedor()">+ Agregar Vendedor</button>
+    </div>
+
+    <div class="resumen-cards">
+        {% for vendedor in vendedores %}
+        <div class="card" style="min-width: 150px; display: flex; justify-content: space-between; align-items: center; padding: 10px 15px;">
+            <span style="font-weight: bold; font-size: 16px;">{{ vendedor.nombre }}</span>
+            <button class="btn-action btn-delete" style="margin: 0;" onclick="eliminarVendedor({{ vendedor.id }}, '{{ vendedor.nombre }}')">Eliminar</button>
+        </div>
+        {% else %}
+        <p style="color: #6c757d;">No hay vendedores registrados.</p>
+        {% endfor %}
+    </div>
+
+    <h2 class="section-title">Ventas Registradas</h2>
+
     <div style="text-align: right;">
         <a href="/descargar_excel" class="btn-descargar">📥 Descargar Planilla Excel (.xlsx)</a>
     </div>
@@ -129,11 +170,12 @@
                     <th>Estado</th>
                     <th>Entrega</th>
                     <th>Dirección (Si es delivery)</th>
+                    <th>Acciones</th>
                 </tr>
             </thead>
             <tbody>
                 {% for venta in ventas %}
-                <tr>
+                <tr id="venta-{{ venta.id }}">
                     <td><strong>{{ venta.vendedor }}</strong></td>
                     <td>{{ venta.nombre }} {{ venta.apellido }}</td>
                     <td>{{ venta.telefono }}</td>
@@ -154,16 +196,165 @@
                         {% endif %}
                     </td>
                     <td>{{ venta.direccion if venta.direccion else '-' }}</td>
+                    <td>
+                        <button class="btn-action btn-edit" onclick="editarVenta({{ venta.id }}, '{{ venta.nombre }}', '{{ venta.apellido }}', '{{ venta.telefono }}', '{{ venta.mail if venta.mail else '' }}', '{{ venta.entrega }}', '{{ venta.direccion if venta.direccion else '' }}', {{ venta.cantidad }}, '{{ venta.pago }}')">Editar</button>
+                        <button class="btn-action btn-delete" onclick="eliminarVenta({{ venta.id }}, '{{ venta.nombre }} {{ venta.apellido }}')">Eliminar</button>
+                    </td>
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="8" style="text-align: center; color: #6c757d;">Todavía no hay ninguna venta registrada.</td>
+                    <td colspan="9" style="text-align: center; color: #6c757d;">Todavía no hay ninguna venta registrada.</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 </div>
+
+<script>
+// Manejo de vendedores
+function agregarVendedor() {
+    Swal.fire({
+        title: 'Agregar nuevo vendedor',
+        input: 'text',
+        inputLabel: 'Nombre del vendedor',
+        inputPlaceholder: 'Ej: leones',
+        showCancelButton: true,
+        confirmButtonText: 'Guardar',
+        cancelButtonText: 'Cancelar',
+        inputValidator: (value) => {
+            if (!value) {
+                return '¡Debes escribir un nombre!'
+            }
+        }
+    }).then((result) => {
+        if (result.isConfirmed) {
+            fetch('/api/vendedores', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nombre: result.value })
+            })
+            .then(async response => {
+                const data = await response.json();
+                if (response.ok) {
+                    Swal.fire('¡Guardado!', data.mensaje, 'success').then(() => location.reload());
+                } else {
+                    Swal.fire('Error', data.detail || 'No se pudo agregar el vendedor.', 'error');
+                }
+            });
+        }
+    });
+}
+
+function eliminarVendedor(id, nombre) {
+    Swal.fire({
+        title: '¿Estás seguro?',
+        text: `Vas a eliminar a "${nombre}". Las ventas asociadas no se borrarán, pero el link dejará de funcionar para este vendedor.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: 'Sí, eliminar',
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            fetch(`/api/vendedores/${id}`, { method: 'DELETE' })
+            .then(async response => {
+                if (response.ok) {
+                    Swal.fire('Eliminado', 'El vendedor ha sido eliminado.', 'success').then(() => location.reload());
+                } else {
+                    const data = await response.json();
+                    Swal.fire('Error', data.detail || 'Ocurrió un error.', 'error');
+                }
+            });
+        }
+    });
+}
+
+// Manejo de ventas
+function eliminarVenta(id, comprador) {
+    Swal.fire({
+        title: '¿Eliminar Venta?',
+        text: `¿Borrar la venta de ${comprador}? Esta acción no se puede deshacer.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: 'Sí, borrar',
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            fetch(`/api/ventas/${id}`, { method: 'DELETE' })
+            .then(async response => {
+                if (response.ok) {
+                    Swal.fire('Eliminada', 'La venta fue eliminada.', 'success').then(() => location.reload());
+                } else {
+                    const data = await response.json();
+                    Swal.fire('Error', data.detail || 'No se pudo eliminar la venta.', 'error');
+                }
+            });
+        }
+    });
+}
+
+function editarVenta(id, nombre, apellido, telefono, mail, entrega, direccion, cantidad, pago) {
+    Swal.fire({
+        title: 'Editar Venta',
+        html: `
+            <input id="swal-nombre" class="swal2-input" placeholder="Nombre" value="${nombre}">
+            <input id="swal-apellido" class="swal2-input" placeholder="Apellido" value="${apellido}">
+            <input id="swal-telefono" class="swal2-input" placeholder="Teléfono" value="${telefono}">
+            <input id="swal-mail" class="swal2-input" placeholder="Mail" value="${mail}">
+
+            <select id="swal-entrega" class="swal2-select" onchange="document.getElementById('swal-direccion').style.display = this.value === 'delivery' ? 'flex' : 'none'">
+                <option value="retiro" ${entrega === 'retiro' ? 'selected' : ''}>Lo retira</option>
+                <option value="delivery" ${entrega === 'delivery' ? 'selected' : ''}>Delivery</option>
+            </select>
+
+            <input id="swal-direccion" class="swal2-input" placeholder="Dirección" value="${direccion}" style="display: ${entrega === 'delivery' ? 'flex' : 'none'}">
+
+            <input id="swal-cantidad" type="number" class="swal2-input" placeholder="Cantidad de porciones" value="${cantidad}" min="1">
+
+            <select id="swal-pago" class="swal2-select">
+                <option value="pagado" ${pago === 'pagado' ? 'selected' : ''}>Pagado</option>
+                <option value="al_recibir" ${pago === 'al_recibir' ? 'selected' : ''}>Al recibir</option>
+            </select>
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: 'Guardar Cambios',
+        cancelButtonText: 'Cancelar',
+        preConfirm: () => {
+            return {
+                nombre: document.getElementById('swal-nombre').value,
+                apellido: document.getElementById('swal-apellido').value,
+                telefono: document.getElementById('swal-telefono').value,
+                mail: document.getElementById('swal-mail').value || null,
+                entrega: document.getElementById('swal-entrega').value,
+                direccion: document.getElementById('swal-direccion').value || null,
+                cantidad: parseInt(document.getElementById('swal-cantidad').value),
+                pago: document.getElementById('swal-pago').value
+            }
+        }
+    }).then((result) => {
+        if (result.isConfirmed) {
+            fetch(`/api/ventas/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(result.value)
+            })
+            .then(async response => {
+                const data = await response.json();
+                if (response.ok) {
+                    Swal.fire('¡Actualizada!', 'La venta se ha guardado correctamente.', 'success').then(() => location.reload());
+                } else {
+                    Swal.fire('Error', data.detail || 'Error al actualizar la venta.', 'error');
+                }
+            });
+        }
+    });
+}
+</script>
 
 </body>
 </html>

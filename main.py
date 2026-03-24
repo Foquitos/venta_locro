@@ -10,6 +10,8 @@ import csv
 import io
 from fastapi import Response # Agrega 'Response' a tus importaciones de fastapi
 from openpyxl import Workbook
+from pydantic import BaseModel
+from typing import Optional
 
 DB_FILE = "ventas_locro.db"
 
@@ -34,6 +36,8 @@ def verificar_credenciales(credentials: HTTPBasicCredentials = Depends(security)
 def init_db():
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
+
+        # Tabla de ventas
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS ventas (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -50,6 +54,21 @@ def init_db():
                 fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+
+        # Nueva Tabla: Vendedores Permitidos
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS vendedores (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre TEXT NOT NULL UNIQUE
+            )
+        ''')
+
+        # Insertar vendedor inicial por defecto si la tabla está vacía para que el sistema funcione
+        cursor.execute("SELECT COUNT(*) FROM vendedores")
+        if cursor.fetchone()[0] == 0:
+            # Como ejemplo, insertamos 'jules' (o 'admin', o un nombre genérico)
+            cursor.execute("INSERT INTO vendedores (nombre) VALUES ('jules')")
+
         conn.commit()
 
 @asynccontextmanager
@@ -97,13 +116,35 @@ def limpiar_telefono(telefono: str) -> str:
 
     return num
 
+# --- NUEVO: Modelos Pydantic para APIs CRUD ---
+class VendedorCreate(BaseModel):
+    nombre: str
+
+class VentaUpdate(BaseModel):
+    nombre: str
+    apellido: str
+    telefono: str
+    mail: Optional[str] = None
+    entrega: str
+    direccion: Optional[str] = None
+    cantidad: int
+    pago: str
+
 # 3. Rutas
 @app.get("/venta/{vendedor}", response_class=HTMLResponse)
 async def formulario_venta(request: Request, vendedor: str):
+    vendedor_limpio = vendedor.strip().lower()
+
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT nombre FROM vendedores WHERE nombre = ?", (vendedor_limpio,))
+        if not cursor.fetchone():
+            return HTMLResponse(content="<h1>Error 404: Vendedor no encontrado</h1><p>Verifica que el link sea correcto.</p>", status_code=404)
+
     return templates.TemplateResponse(
         request=request, 
         name="formulario.html", 
-        context={"vendedor": vendedor}
+        context={"vendedor": vendedor_limpio}
     )
 
 @app.post("/procesar_venta")
@@ -153,19 +194,27 @@ async def procesar_venta(
     # Validaciones de pago
     if pago not in ["pagado", "al_recibir"]:
         raise HTTPException(status_code=400, detail="Opción de pago inválida.")
-        
+
     # Validaciones de cantidad
     if cantidad < 1:
          raise HTTPException(status_code=400, detail="La cantidad debe ser al menos 1.")
 
-    total_a_pagar = calcular_precio(cantidad)
+    vendedor_limpio = vendedor.strip().lower()
 
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
+
+        # Validación de Vendedor en base de datos
+        cursor.execute("SELECT nombre FROM vendedores WHERE nombre = ?", (vendedor_limpio,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=400, detail="Vendedor no válido.")
+
+        total_a_pagar = calcular_precio(cantidad)
+
         cursor.execute('''
             INSERT INTO ventas (vendedor, nombre, apellido, telefono, mail, entrega, direccion, cantidad, total, pago)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (vendedor, nombre_limpio, apellido_limpio, telefono_limpio, mail_limpio, entrega, direccion, cantidad, total_a_pagar, pago))
+        ''', (vendedor_limpio, nombre_limpio, apellido_limpio, telefono_limpio, mail_limpio, entrega, direccion, cantidad, total_a_pagar, pago))
         conn.commit()
 
     return {
@@ -187,6 +236,9 @@ async def panel_admin(request: Request, usuario: str = Depends(verificar_credenc
         cursor.execute("SELECT * FROM ventas ORDER BY fecha DESC")
         ventas = cursor.fetchall()
         
+        cursor.execute("SELECT * FROM vendedores ORDER BY nombre ASC")
+        vendedores = cursor.fetchall()
+
         # Ojo: si no hay ventas todavía, sum() tiraría error si no le pasamos un valor por defecto, 
         # pero en Python los generadores vacíos devuelven 0, así que estamos bien.
         total_porciones = sum(venta["cantidad"] for venta in ventas)
@@ -199,12 +251,81 @@ async def panel_admin(request: Request, usuario: str = Depends(verificar_credenc
         name="admin.html",
         context={
             "ventas": ventas,
+            "vendedores": vendedores,
             "total_porciones": total_porciones,
             "total_plata_general": total_plata_general,
             "total_recaudado_real": total_recaudado_real,
             "plata_a_cobrar": plata_a_cobrar
         }
     )
+
+# --- NUEVAS RUTAS CRUD (Protegidas) ---
+
+@app.post("/api/vendedores", status_code=status.HTTP_201_CREATED)
+async def crear_vendedor(vendedor: VendedorCreate, usuario: str = Depends(verificar_credenciales)):
+    nombre_limpio = vendedor.nombre.strip().lower()
+    if not nombre_limpio:
+        raise HTTPException(status_code=400, detail="El nombre del vendedor no puede estar vacío.")
+
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO vendedores (nombre) VALUES (?)", (nombre_limpio,))
+            conn.commit()
+            return {"mensaje": "Vendedor creado exitosamente.", "id": cursor.lastrowid, "nombre": nombre_limpio}
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=400, detail="El vendedor ya existe.")
+
+@app.delete("/api/vendedores/{vendedor_id}")
+async def eliminar_vendedor(vendedor_id: int, usuario: str = Depends(verificar_credenciales)):
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM vendedores WHERE id = ?", (vendedor_id,))
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Vendedor no encontrado.")
+        return {"mensaje": "Vendedor eliminado exitosamente."}
+
+@app.delete("/api/ventas/{venta_id}")
+async def eliminar_venta(venta_id: int, usuario: str = Depends(verificar_credenciales)):
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM ventas WHERE id = ?", (venta_id,))
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Venta no encontrada.")
+        return {"mensaje": "Venta eliminada exitosamente."}
+
+@app.put("/api/ventas/{venta_id}")
+async def editar_venta(venta_id: int, venta: VentaUpdate, usuario: str = Depends(verificar_credenciales)):
+    nombre_limpio = venta.nombre.strip().title()
+    apellido_limpio = venta.apellido.strip().title()
+    telefono_limpio = limpiar_telefono(venta.telefono)
+
+    if len(telefono_limpio) != 10:
+        raise HTTPException(status_code=400, detail="El teléfono debe tener 10 números.")
+
+    if venta.entrega == "delivery" and not venta.direccion:
+        raise HTTPException(status_code=400, detail="Debes ingresar una dirección para el delivery.")
+
+    if venta.cantidad < 1:
+        raise HTTPException(status_code=400, detail="La cantidad debe ser al menos 1.")
+
+    total_a_pagar = calcular_precio(venta.cantidad)
+
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE ventas
+            SET nombre = ?, apellido = ?, telefono = ?, mail = ?, entrega = ?, direccion = ?, cantidad = ?, total = ?, pago = ?
+            WHERE id = ?
+        ''', (nombre_limpio, apellido_limpio, telefono_limpio, venta.mail, venta.entrega, venta.direccion, venta.cantidad, total_a_pagar, venta.pago, venta_id))
+        conn.commit()
+
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Venta no encontrada.")
+
+    return {"mensaje": "Venta actualizada exitosamente."}
 
 @app.get("/descargar_csv")
 async def descargar_csv(usuario: str = Depends(verificar_credenciales)):
