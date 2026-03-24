@@ -1,0 +1,91 @@
+/* Diseño Mobile-First */
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f9;
+    margin: 0;
+    padding: 15px;
+    color: #333;
+}
+.container {
+    background-color: white;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    max-width: 500px;
+    margin: 0 auto;
+}
+h2 {
+    text-align: center;
+    color: #2c3e50;
+    font-size: 22px;
+    margin-top: 0;
+}
+label {
+    font-weight: bold;
+    display: block;
+    margin-top: 15px;
+    margin-bottom: 5px;
+    font-size: 16px;
+}
+/* Entradas de texto grandes para dedos y teclados de celular */
+input[type="text"], 
+input[type="tel"], 
+input[type="email"], 
+input[type="number"] {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font-size: 16px;
+    box-sizing: border-box;
+}
+/* Estilo para los botones de opción (Radio) */
+.radio-group {
+    display: flex;
+    gap: 10px;
+    margin-top: 5px;
+}
+.radio-group label {
+    background-color: #e9ecef;
+    padding: 12px;
+    border-radius: 8px;
+    flex: 1;
+    text-align: center;
+    margin: 0;
+    font-weight: normal;
+    border: 2px solid transparent;
+    cursor: pointer;
+}
+.radio-group input[type="radio"] {
+    display: none;
+}
+/* Cambia el color cuando se selecciona la opción */
+.radio-group input[type="radio"]:checked + span {
+    font-weight: bold;
+}
+.total-box {
+    background-color: #d4edda;
+    color: #155724;
+    padding: 15px;
+    border-radius: 8px;
+    text-align: center;
+    font-size: 20px;
+    font-weight: bold;
+    margin-top: 20px;
+}
+.btn-submit {
+    background-color: #0056b3;
+    color: white;
+    border: none;
+    padding: 15px;
+    width: 100%;
+    border-radius: 8px;
+    font-size: 18px;
+    font-weight: bold;
+    margin-top: 25px;
+    cursor: pointer;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+.btn-submit:active {
+    background-color: #004494;
+}

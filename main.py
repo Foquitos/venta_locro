@@ -12,7 +12,7 @@ from fastapi import Response # Agrega 'Response' a tus importaciones de fastapi
 from openpyxl import Workbook
 from pydantic import BaseModel
 from typing import Optional
-
+from fastapi.staticfiles import StaticFiles
 DB_FILE = "ventas_locro.db"
 
 # --- NUEVO: Configuración de Seguridad ---
@@ -59,17 +59,31 @@ def init_db():
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS vendedores (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nombre TEXT NOT NULL UNIQUE
+                nombre TEXT NOT NULL UNIQUE,
+                rama TEXT NOT NULL
             )
         ''')
 
-        # Insertar vendedor inicial por defecto si la tabla está vacía para que el sistema funcione
+        # Insertar vendedor inicial por defecto si la tabla está vacía
         cursor.execute("SELECT COUNT(*) FROM vendedores")
         if cursor.fetchone()[0] == 0:
-            # Como ejemplo, insertamos 'jules' (o 'admin', o un nombre genérico)
-            cursor.execute("INSERT INTO vendedores (nombre) VALUES ('jules')")
+            # Insertamos un usuario inicial asignado directamente a los Rovers
+            cursor.execute("INSERT INTO vendedores (nombre, rama) VALUES ('Ignacio_Otranto', 'Rovers')")
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS entregas_dinero (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                vendedor TEXT NOT NULL,
+                monto INTEGER NOT NULL,
+                fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
 
         conn.commit()
+
+class EntregaCreate(BaseModel):
+    vendedor: str
+    monto: int
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -77,6 +91,8 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(lifespan=lifespan)
+# Agrega esta línea para que FastAPI pueda leer el CSS y el JS
+app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 # 2. Funciones Auxiliares
@@ -119,6 +135,7 @@ def limpiar_telefono(telefono: str) -> str:
 # --- NUEVO: Modelos Pydantic para APIs CRUD ---
 class VendedorCreate(BaseModel):
     nombre: str
+    rama: str # <--- Nuevo campo obligatorio
 
 class VentaUpdate(BaseModel):
     nombre: str
@@ -225,54 +242,92 @@ async def procesar_venta(
         "total_a_cobrar": f"${total_a_pagar}"
     }
 
-# --- NUEVA RUTA PROTEGIDA ---
-# Nota el "Depends(verificar_credenciales)"
 @app.get("/admin_scout", response_class=HTMLResponse)
 async def panel_admin(request: Request, usuario: str = Depends(verificar_credenciales)):
     with sqlite3.connect(DB_FILE) as conn:
         conn.row_factory = sqlite3.Row 
         cursor = conn.cursor()
         
-        cursor.execute("SELECT * FROM ventas ORDER BY fecha DESC")
+        # Ventas cruzadas con la rama
+        cursor.execute('''
+            SELECT ventas.*, COALESCE(vendedores.rama, 'Sin Rama') as rama 
+            FROM ventas 
+            LEFT JOIN vendedores ON ventas.vendedor = vendedores.nombre 
+            ORDER BY ventas.fecha DESC
+        ''')
         ventas = cursor.fetchall()
         
-        cursor.execute("SELECT * FROM vendedores ORDER BY nombre ASC")
+        # Vendedores sumando el dinero que ya entregaron
+        cursor.execute('''
+            SELECT v.id, v.nombre, COALESCE(v.rama, 'Sin Rama') as rama,
+                   COALESCE((SELECT SUM(monto) FROM entregas_dinero WHERE vendedor = v.nombre), 0) as dinero_entregado
+            FROM vendedores v
+            ORDER BY v.nombre ASC
+        ''')
         vendedores = cursor.fetchall()
 
-        # Ojo: si no hay ventas todavía, sum() tiraría error si no le pasamos un valor por defecto, 
-        # pero en Python los generadores vacíos devuelven 0, así que estamos bien.
-        total_porciones = sum(venta["cantidad"] for venta in ventas)
-        total_plata_general = sum(venta["total"] for venta in ventas)
-        total_recaudado_real = sum(venta["total"] for venta in ventas if venta["pago"] == "pagado")
-        plata_a_cobrar = total_plata_general - total_recaudado_real
-
+    # Ya no calculamos los KPI en Python porque lo hará Javascript dinámicamente
     return templates.TemplateResponse(
         request=request,
         name="admin.html",
         context={
             "ventas": ventas,
-            "vendedores": vendedores,
-            "total_porciones": total_porciones,
-            "total_plata_general": total_plata_general,
-            "total_recaudado_real": total_recaudado_real,
-            "plata_a_cobrar": plata_a_cobrar
+            "vendedores": vendedores
         }
     )
 
+@app.post("/api/entregas", status_code=status.HTTP_201_CREATED)
+async def registrar_entrega(entrega: EntregaCreate, usuario: str = Depends(verificar_credenciales)):
+    if entrega.monto <= 0:
+        raise HTTPException(status_code=400, detail="El monto debe ser mayor a 0.")
+
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+
+        # Calculamos cuánta plata cobró el vendedor realmente ("pagado")
+        cursor.execute("SELECT SUM(total) FROM ventas WHERE vendedor = ? AND pago = 'pagado'", (entrega.vendedor,))
+        total_recaudado = cursor.fetchone()[0] or 0
+
+        # Calculamos cuánta plata ya entregó
+        cursor.execute("SELECT SUM(monto) FROM entregas_dinero WHERE vendedor = ?", (entrega.vendedor,))
+        ya_entregado = cursor.fetchone()[0] or 0
+
+        disponible = total_recaudado - ya_entregado
+
+        # Evitamos que entregue más plata de la que supuestamente tiene
+        if entrega.monto > disponible:
+            raise HTTPException(status_code=400, detail=f"El vendedor solo tiene ${disponible} disponibles para entregar (Recaudó ${total_recaudado} y ya entregó ${ya_entregado}).")
+
+        # Registramos la nueva entrega
+        cursor.execute("INSERT INTO entregas_dinero (vendedor, monto) VALUES (?, ?)", (entrega.vendedor, entrega.monto))
+        conn.commit()
+        
+    return {"mensaje": f"Se registraron ${entrega.monto} correctamente."}
 # --- NUEVAS RUTAS CRUD (Protegidas) ---
 
 @app.post("/api/vendedores", status_code=status.HTTP_201_CREATED)
 async def crear_vendedor(vendedor: VendedorCreate, usuario: str = Depends(verificar_credenciales)):
     nombre_limpio = vendedor.nombre.strip().lower()
+    
     if not nombre_limpio:
         raise HTTPException(status_code=400, detail="El nombre del vendedor no puede estar vacío.")
+    
+    # Validamos que la rama sea una de las permitidas
+    ramas_permitidas = ["Manada", "Unidad", "Caminantes", "Rovers", "Educadores/acompañantes"]
+    if vendedor.rama not in ramas_permitidas:
+        raise HTTPException(status_code=400, detail="Rama seleccionada no válida.")
 
     try:
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
-            cursor.execute("INSERT INTO vendedores (nombre) VALUES (?)", (nombre_limpio,))
+            cursor.execute("INSERT INTO vendedores (nombre, rama) VALUES (?, ?)", (nombre_limpio, vendedor.rama))
             conn.commit()
-            return {"mensaje": "Vendedor creado exitosamente.", "id": cursor.lastrowid, "nombre": nombre_limpio}
+            return {
+                "mensaje": "Vendedor creado exitosamente.", 
+                "id": cursor.lastrowid, 
+                "nombre": nombre_limpio,
+                "rama": vendedor.rama
+            }
     except sqlite3.IntegrityError:
         raise HTTPException(status_code=400, detail="El vendedor ya existe.")
 
@@ -327,64 +382,54 @@ async def editar_venta(venta_id: int, venta: VentaUpdate, usuario: str = Depends
 
     return {"mensaje": "Venta actualizada exitosamente."}
 
-@app.get("/descargar_csv")
-async def descargar_csv(usuario: str = Depends(verificar_credenciales)):
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
-        # Traemos todas las ventas
-        cursor.execute("SELECT * FROM ventas ORDER BY fecha DESC")
-        ventas = cursor.fetchall()
-        
-        # Obtenemos los nombres de las columnas para el encabezado del Excel
-        nombres_columnas = [description[0] for description in cursor.description]
-
-    # Creamos un archivo de texto en la memoria RAM
-    output = io.StringIO()
-    # Usamos punto y coma (;) porque el Excel configurado en Argentina 
-    # suele separar las columnas así por defecto.
-    writer = csv.writer(output, delimiter=';') 
-
-    # Escribimos la primera fila con los títulos
-    writer.writerow(nombres_columnas)
-    
-    # Escribimos todas las filas de ventas
-    for venta in ventas:
-        writer.writerow(venta)
-
-    # Preparamos la respuesta para que el navegador entienda que es una descarga
-    response = Response(content=output.getvalue(), media_type="text/csv")
-    response.headers["Content-Disposition"] = 'attachment; filename="ventas_locro_scout.csv"'
-    
-    return response
-
 @app.get("/descargar_excel")
-async def descargar_excel(usuario: str = Depends(verificar_credenciales)):
+async def descargar_excel(rama: Optional[str] = None, vendedor: Optional[str] = None, usuario: str = Depends(verificar_credenciales)):
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
-        # Traemos todas las ventas
-        cursor.execute("SELECT * FROM ventas ORDER BY fecha DESC")
+        
+        # Construimos la consulta base uniendo ventas y vendedores
+        query = '''
+            SELECT ventas.vendedor, COALESCE(vendedores.rama, 'Sin Rama') as rama, 
+                   ventas.nombre, ventas.apellido, ventas.telefono, ventas.mail, 
+                   ventas.entrega, ventas.direccion, ventas.cantidad, ventas.total, 
+                   ventas.pago, ventas.fecha
+            FROM ventas
+            LEFT JOIN vendedores ON ventas.vendedor = vendedores.nombre
+            WHERE 1=1
+        '''
+        parametros = []
+
+        # Aplicamos los filtros si el usuario seleccionó alguno
+        if vendedor:
+            query += " AND ventas.vendedor = ?"
+            parametros.append(vendedor)
+        if rama:
+            if rama == "Sin Rama":
+                query += " AND vendedores.rama IS NULL"
+            else:
+                query += " AND vendedores.rama = ?"
+                parametros.append(rama)
+        
+        query += " ORDER BY ventas.fecha DESC"
+        
+        cursor.execute(query, parametros)
         ventas = cursor.fetchall()
         
-        # Obtenemos los nombres de las columnas
-        nombres_columnas = [description[0] for description in cursor.description]
+        # Agregamos "Rama" a las columnas del Excel
+        nombres_columnas = ["Vendedor", "Rama", "Nombre del Comprador", "Apellido", "Teléfono", "Mail", "Entrega", "Dirección", "Cantidad", "Total", "Pago", "Fecha"]
 
-    # Creamos un libro de Excel en memoria
     wb = Workbook()
     ws = wb.active
     ws.title = "Ventas Locro"
 
-    # Agregamos la fila de los encabezados
     ws.append(nombres_columnas)
 
-    # Agregamos todas las filas de ventas
     for venta in ventas:
         ws.append(venta)
 
-    # Guardamos el Excel en un archivo binario en memoria (BytesIO)
     output = io.BytesIO()
     wb.save(output)
 
-    # Preparamos la respuesta indicando que es un archivo .xlsx
     media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     response = Response(content=output.getvalue(), media_type=media_type)
     response.headers["Content-Disposition"] = 'attachment; filename="ventas_locro_scout.xlsx"'

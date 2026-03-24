@@ -1,0 +1,103 @@
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f8f9fa;
+    margin: 0;
+    padding: 20px;
+    color: #333;
+}
+.dashboard-container {
+    max-width: 1000px;
+    margin: 0 auto;
+}
+h1 {
+    color: #2c3e50;
+    text-align: center;
+}
+/* Tarjetas de resumen */
+.resumen-cards {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 25px;
+    flex-wrap: wrap;
+}
+.card {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    flex: 1;
+    min-width: 200px;
+    text-align: center;
+}
+.card h3 { margin: 0 0 10px 0; color: #6c757d; font-size: 16px; }
+.card .valor { font-size: 24px; font-weight: bold; color: #0056b3; }
+.card.verde .valor { color: #28a745; }
+.card.naranja .valor { color: #fd7e14; }
+
+/* Tabla responsiva */
+.table-responsive {
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    overflow-x: auto;
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+    white-space: nowrap;
+}
+th, td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #dee2e6;
+}
+th {
+    background-color: #f1f3f5;
+    color: #495057;
+}
+.badge {
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: bold;
+}
+.badge-pagado { background-color: #d4edda; color: #155724; }
+.badge-debe { background-color: #f8d7da; color: #721c24; }
+.badge-delivery { background-color: #cce5ff; color: #004085; }
+.badge-retiro { background-color: #e2e3e5; color: #383d41; }
+.btn-descargar {
+    display: inline-block;
+    background-color: #28a745;
+    color: white;
+    padding: 10px 20px;
+    text-decoration: none;
+    border-radius: 8px;
+    font-weight: bold;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.btn-descargar:hover {
+    background-color: #218838;
+}
+
+/* Botones de acción CRUD */
+.btn-action {
+    padding: 5px 10px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: bold;
+    color: white;
+    margin-right: 5px;
+}
+.btn-edit { background-color: #ffc107; color: #212529; }
+.btn-delete { background-color: #dc3545; }
+.btn-add { background-color: #007bff; color: white; padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;}
+
+.section-title {
+    margin-top: 40px;
+    border-bottom: 2px solid #dee2e6;
+    padding-bottom: 10px;
+}

@@ -4,135 +4,36 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Panel de Control - Locro</title>
-    <!-- SweetAlert2 -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f8f9fa;
-            margin: 0;
-            padding: 20px;
-            color: #333;
-        }
-        .dashboard-container {
-            max-width: 1000px;
-            margin: 0 auto;
-        }
-        h1 {
-            color: #2c3e50;
-            text-align: center;
-        }
-        /* Tarjetas de resumen */
-        .resumen-cards {
-            display: flex;
-            gap: 15px;
-            margin-bottom: 25px;
-            flex-wrap: wrap;
-        }
-        .card {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            flex: 1;
-            min-width: 200px;
-            text-align: center;
-        }
-        .card h3 { margin: 0 0 10px 0; color: #6c757d; font-size: 16px; }
-        .card .valor { font-size: 24px; font-weight: bold; color: #0056b3; }
-        .card.verde .valor { color: #28a745; }
-        .card.naranja .valor { color: #fd7e14; }
-
-        /* Tabla responsiva */
-        .table-responsive {
-            background: white;
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            overflow-x: auto; /* Permite scroll horizontal en celulares */
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            white-space: nowrap;
-        }
-        th, td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #dee2e6;
-        }
-        th {
-            background-color: #f1f3f5;
-            color: #495057;
-        }
-        .badge {
-            padding: 5px 10px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: bold;
-        }
-        .badge-pagado { background-color: #d4edda; color: #155724; }
-        .badge-debe { background-color: #f8d7da; color: #721c24; }
-        .badge-delivery { background-color: #cce5ff; color: #004085; }
-        .badge-retiro { background-color: #e2e3e5; color: #383d41; }
-        .btn-descargar {
-            display: inline-block;
-            background-color: #28a745;
-            color: white;
-            padding: 10px 20px;
-            text-decoration: none;
-            border-radius: 8px;
-            font-weight: bold;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .btn-descargar:hover {
-            background-color: #218838;
-        }
-
-        /* Botones de acción CRUD */
-        .btn-action {
-            padding: 5px 10px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 12px;
-            font-weight: bold;
-            color: white;
-            margin-right: 5px;
-        }
-        .btn-edit { background-color: #ffc107; color: #212529; }
-        .btn-delete { background-color: #dc3545; }
-        .btn-add { background-color: #007bff; color: white; padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;}
-
-        .section-title {
-            margin-top: 40px;
-            border-bottom: 2px solid #dee2e6;
-            padding-bottom: 10px;
-        }
-    </style>
+    <link rel="stylesheet" href="/static/css/admin.css">
 </head>
 <body>
 
 <div class="dashboard-container">
     <h1>Administración de Ventas</h1>
 
-    <div class="resumen-cards">
+    <div class="resumen-cards" id="kpi-container">
         <div class="card">
             <h3>Total Porciones</h3>
-            <div class="valor">{{ total_porciones }}</div>
-        </div>
-        <div class="card verde">
-            <h3>Plata en Mano (Pagado)</h3>
-            <div class="valor">${{ total_recaudado_real }}</div>
+            <div class="valor" id="kpi-porciones">0</div>
         </div>
         <div class="card naranja">
-            <h3>A Cobrar al Entregar</h3>
-            <div class="valor">${{ plata_a_cobrar }}</div>
+            <h3>Plata Vendedores</h3>
+            <small style="color: #6c757d;">(Tienen en el bolsillo)</small>
+            <div class="valor" id="kpi-vendedor">$0</div>
         </div>
-        <div class="card">
-            <h3>Recaudación Proyectada</h3>
-            <div class="valor">${{ total_plata_general }}</div>
+        <div class="card verde">
+            <h3>Plata Administradores</h3>
+            <small style="color: #6c757d;">(Dinero ya entregado al Grupo)</small>
+            <div class="valor" id="kpi-admin">$0</div>
+        </div>
+        <div class="card" style="border: 1px solid #dc3545;">
+            <h3>A Cobrar al Entregar</h3>
+            <div class="valor" style="color: #dc3545;" id="kpi-acobrar">$0</div>
+        </div>
+        <div class="card" style="background-color: #f1f3f5;">
+            <h3>Recaudación Total Proyectada</h3>
+            <div class="valor" id="kpi-total">$0</div>
         </div>
     </div>
 
@@ -143,9 +44,16 @@
 
     <div class="resumen-cards">
         {% for vendedor in vendedores %}
-        <div class="card" style="min-width: 150px; display: flex; justify-content: space-between; align-items: center; padding: 10px 15px;">
-            <span style="font-weight: bold; font-size: 16px;">{{ vendedor.nombre }}</span>
-            <button class="btn-action btn-delete" style="margin: 0;" onclick="eliminarVendedor({{ vendedor.id }}, '{{ vendedor.nombre }}')">Eliminar</button>
+        <div class="card card-vendedor" data-vendedor="{{ vendedor.nombre }}" data-rama="{{ vendedor.rama }}" data-entregado="{{ vendedor.dinero_entregado }}" style="min-width: 280px; display: flex; justify-content: space-between; align-items: center; padding: 10px 15px;">
+            <div style="text-align: left;">
+                <span style="font-weight: bold; font-size: 16px; display: block;">{{ vendedor.nombre }}</span>
+                <span style="font-size: 12px; color: #6c757d;">{{ vendedor.rama }}</span>
+                <span style="font-size: 13px; color: #28a745; display: block; margin-top: 5px; font-weight: bold;">Entregado: ${{ vendedor.dinero_entregado }}</span>
+            </div>
+            <div>
+                <button class="btn-action btn-add" style="background-color: #28a745; margin-right: 5px; font-size: 11px; padding: 6px 10px;" onclick="registrarEntrega('{{ vendedor.nombre }}')">Recibir $</button>
+                <button class="btn-action btn-delete" style="margin: 0; font-size: 11px; padding: 6px 10px;" onclick="eliminarVendedor({{ vendedor.id }}, '{{ vendedor.nombre }}')">Eliminar</button>
+            </div>
         </div>
         {% else %}
         <p style="color: #6c757d;">No hay vendedores registrados.</p>
@@ -154,8 +62,27 @@
 
     <h2 class="section-title">Ventas Registradas</h2>
 
-    <div style="text-align: right;">
-        <a href="/descargar_excel" class="btn-descargar">📥 Descargar Planilla Excel (.xlsx)</a>
+    <div style="display: flex; gap: 15px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
+        <select id="filtro-rama" onchange="aplicarFiltros()" style="padding: 10px; border-radius: 8px; border: 1px solid #ccc;">
+            <option value="">Todas las Ramas</option>
+            <option value="Manada">Manada</option>
+            <option value="Unidad">Unidad</option>
+            <option value="Caminantes">Caminantes</option>
+            <option value="Rovers">Rovers</option>
+            <option value="Educadores/acompañantes">Educadores/acompañantes</option>
+            <option value="Sin Rama">Sin Rama</option>
+        </select>
+
+        <select id="filtro-vendedor" onchange="aplicarFiltros()" style="padding: 10px; border-radius: 8px; border: 1px solid #ccc;">
+            <option value="">Todos los Vendedores</option>
+            {% for vendedor in vendedores %}
+            <option value="{{ vendedor.nombre }}">{{ vendedor.nombre }}</option>
+            {% endfor %}
+        </select>
+
+        <a href="/descargar_excel" id="btn-descargar-filtrado" class="btn-descargar" style="margin-bottom: 0; margin-left: auto;">
+            📥 Descargar Planilla Excel (.xlsx)
+        </a>
     </div>
 
     <div class="table-responsive">
@@ -169,14 +96,17 @@
                     <th>Total</th>
                     <th>Estado</th>
                     <th>Entrega</th>
-                    <th>Dirección (Si es delivery)</th>
+                    <th>Dirección</th>
                     <th>Acciones</th>
                 </tr>
             </thead>
             <tbody>
                 {% for venta in ventas %}
-                <tr id="venta-{{ venta.id }}">
-                    <td><strong>{{ venta.vendedor }}</strong></td>
+                <tr id="venta-{{ venta.id }}" class="fila-venta" data-vendedor="{{ venta.vendedor }}" data-rama="{{ venta.rama }}" data-cantidad="{{ venta.cantidad }}" data-total="{{ venta.total }}" data-pago="{{ venta.pago }}">
+                    <td>
+                        <strong>{{ venta.vendedor }}</strong><br>
+                        <span style="font-size: 11px; color: #6c757d;">{{ venta.rama }}</span>
+                    </td>
                     <td>{{ venta.nombre }} {{ venta.apellido }}</td>
                     <td>{{ venta.telefono }}</td>
                     <td>{{ venta.cantidad }}</td>
@@ -211,150 +141,7 @@
     </div>
 </div>
 
-<script>
-// Manejo de vendedores
-function agregarVendedor() {
-    Swal.fire({
-        title: 'Agregar nuevo vendedor',
-        input: 'text',
-        inputLabel: 'Nombre del vendedor',
-        inputPlaceholder: 'Ej: leones',
-        showCancelButton: true,
-        confirmButtonText: 'Guardar',
-        cancelButtonText: 'Cancelar',
-        inputValidator: (value) => {
-            if (!value) {
-                return '¡Debes escribir un nombre!'
-            }
-        }
-    }).then((result) => {
-        if (result.isConfirmed) {
-            fetch('/api/vendedores', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ nombre: result.value })
-            })
-            .then(async response => {
-                const data = await response.json();
-                if (response.ok) {
-                    Swal.fire('¡Guardado!', data.mensaje, 'success').then(() => location.reload());
-                } else {
-                    Swal.fire('Error', data.detail || 'No se pudo agregar el vendedor.', 'error');
-                }
-            });
-        }
-    });
-}
-
-function eliminarVendedor(id, nombre) {
-    Swal.fire({
-        title: '¿Estás seguro?',
-        text: `Vas a eliminar a "${nombre}". Las ventas asociadas no se borrarán, pero el link dejará de funcionar para este vendedor.`,
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#d33',
-        cancelButtonColor: '#3085d6',
-        confirmButtonText: 'Sí, eliminar',
-        cancelButtonText: 'Cancelar'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            fetch(`/api/vendedores/${id}`, { method: 'DELETE' })
-            .then(async response => {
-                if (response.ok) {
-                    Swal.fire('Eliminado', 'El vendedor ha sido eliminado.', 'success').then(() => location.reload());
-                } else {
-                    const data = await response.json();
-                    Swal.fire('Error', data.detail || 'Ocurrió un error.', 'error');
-                }
-            });
-        }
-    });
-}
-
-// Manejo de ventas
-function eliminarVenta(id, comprador) {
-    Swal.fire({
-        title: '¿Eliminar Venta?',
-        text: `¿Borrar la venta de ${comprador}? Esta acción no se puede deshacer.`,
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#d33',
-        cancelButtonColor: '#3085d6',
-        confirmButtonText: 'Sí, borrar',
-        cancelButtonText: 'Cancelar'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            fetch(`/api/ventas/${id}`, { method: 'DELETE' })
-            .then(async response => {
-                if (response.ok) {
-                    Swal.fire('Eliminada', 'La venta fue eliminada.', 'success').then(() => location.reload());
-                } else {
-                    const data = await response.json();
-                    Swal.fire('Error', data.detail || 'No se pudo eliminar la venta.', 'error');
-                }
-            });
-        }
-    });
-}
-
-function editarVenta(id, nombre, apellido, telefono, mail, entrega, direccion, cantidad, pago) {
-    Swal.fire({
-        title: 'Editar Venta',
-        html: `
-            <input id="swal-nombre" class="swal2-input" placeholder="Nombre" value="${nombre}">
-            <input id="swal-apellido" class="swal2-input" placeholder="Apellido" value="${apellido}">
-            <input id="swal-telefono" class="swal2-input" placeholder="Teléfono" value="${telefono}">
-            <input id="swal-mail" class="swal2-input" placeholder="Mail" value="${mail}">
-
-            <select id="swal-entrega" class="swal2-select" onchange="document.getElementById('swal-direccion').style.display = this.value === 'delivery' ? 'flex' : 'none'">
-                <option value="retiro" ${entrega === 'retiro' ? 'selected' : ''}>Lo retira</option>
-                <option value="delivery" ${entrega === 'delivery' ? 'selected' : ''}>Delivery</option>
-            </select>
-
-            <input id="swal-direccion" class="swal2-input" placeholder="Dirección" value="${direccion}" style="display: ${entrega === 'delivery' ? 'flex' : 'none'}">
-
-            <input id="swal-cantidad" type="number" class="swal2-input" placeholder="Cantidad de porciones" value="${cantidad}" min="1">
-
-            <select id="swal-pago" class="swal2-select">
-                <option value="pagado" ${pago === 'pagado' ? 'selected' : ''}>Pagado</option>
-                <option value="al_recibir" ${pago === 'al_recibir' ? 'selected' : ''}>Al recibir</option>
-            </select>
-        `,
-        focusConfirm: false,
-        showCancelButton: true,
-        confirmButtonText: 'Guardar Cambios',
-        cancelButtonText: 'Cancelar',
-        preConfirm: () => {
-            return {
-                nombre: document.getElementById('swal-nombre').value,
-                apellido: document.getElementById('swal-apellido').value,
-                telefono: document.getElementById('swal-telefono').value,
-                mail: document.getElementById('swal-mail').value || null,
-                entrega: document.getElementById('swal-entrega').value,
-                direccion: document.getElementById('swal-direccion').value || null,
-                cantidad: parseInt(document.getElementById('swal-cantidad').value),
-                pago: document.getElementById('swal-pago').value
-            }
-        }
-    }).then((result) => {
-        if (result.isConfirmed) {
-            fetch(`/api/ventas/${id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(result.value)
-            })
-            .then(async response => {
-                const data = await response.json();
-                if (response.ok) {
-                    Swal.fire('¡Actualizada!', 'La venta se ha guardado correctamente.', 'success').then(() => location.reload());
-                } else {
-                    Swal.fire('Error', data.detail || 'Error al actualizar la venta.', 'error');
-                }
-            });
-        }
-    });
-}
-</script>
+<script src="/static/js/admin.js"></script>
 
 </body>
 </html>
