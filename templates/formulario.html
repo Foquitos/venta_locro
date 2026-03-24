@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Venta de Locro Scout</title>
+    <style>
+        /* Diseño Mobile-First */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 15px;
+            color: #333;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        h2 {
+            text-align: center;
+            color: #2c3e50;
+            font-size: 22px;
+            margin-top: 0;
+        }
+        label {
+            font-weight: bold;
+            display: block;
+            margin-top: 15px;
+            margin-bottom: 5px;
+            font-size: 16px;
+        }
+        /* Entradas de texto grandes para dedos y teclados de celular */
+        input[type="text"], 
+        input[type="tel"], 
+        input[type="email"], 
+        input[type="number"] {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 16px;
+            box-sizing: border-box; /* Evita que el padding rompa el ancho */
+        }
+        /* Estilo para los botones de opción (Radio) */
+        .radio-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 5px;
+        }
+        .radio-group label {
+            background-color: #e9ecef;
+            padding: 12px;
+            border-radius: 8px;
+            flex: 1;
+            text-align: center;
+            margin: 0;
+            font-weight: normal;
+            border: 2px solid transparent;
+        }
+        .radio-group input[type="radio"] {
+            display: none; /* Ocultamos el circulito por defecto */
+        }
+        /* Cambia el color cuando se selecciona la opción */
+        .radio-group input[type="radio"]:checked + span {
+            font-weight: bold;
+        }
+        .radio-group has(:checked) {
+            background-color: #e9ecef;
+        }
+        .total-box {
+            background-color: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 20px;
+            font-weight: bold;
+            margin-top: 20px;
+        }
+        .btn-submit {
+            background-color: #0056b3;
+            color: white;
+            border: none;
+            padding: 15px;
+            width: 100%;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: bold;
+            margin-top: 25px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .btn-submit:active {
+            background-color: #004494;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>Venta de Locro<br><small>Vendedor: {{ vendedor }}</small></h2>
+        
+        <form action="/procesar_venta" method="post">
+            <input type="hidden" name="vendedor" value="{{ vendedor }}">
+
+            <label for="nombre">Nombre del comprador:</label>
+            <input type="text" id="nombre" name="nombre" required placeholder="Ej: Juan">
+
+            <label for="apellido">Apellido del comprador:</label>
+            <input type="text" id="apellido" name="apellido" required placeholder="Ej: Pérez">
+
+            <label for="telefono">Teléfono (Celular):</label>
+            <input type="tel" id="telefono" name="telefono" required placeholder="Ej: 1123456789" maxlength="15">
+
+            <label for="mail">Mail (Opcional):</label>
+            <input type="email" id="mail" name="mail" placeholder="ejemplo@correo.com">
+
+            <label>Modalidad de entrega:</label>
+            <div class="radio-group" onchange="toggleDireccion()">
+                <label>
+                    <input type="radio" name="entrega" value="retiro" checked>
+                    <span>Lo retira</span>
+                </label>
+                <label>
+                    <input type="radio" name="entrega" value="delivery">
+                    <span>Delivery</span>
+                </label>
+            </div>
+
+            <div id="div-direccion" style="display: none;">
+                <label for="direccion">Dirección de entrega:</label>
+                <input type="text" id="direccion" name="direccion" placeholder="Ej: Laprida 4500, Villa Martelli">
+            </div>
+
+            <label for="cantidad">Cantidad de porciones:</label>
+            <input type="number" id="cantidad" name="cantidad" min="1" value="1" required oninput="calcularTotal()">
+            <small style="color: #666;">$10.000 c/u - Promoción: 2 por $18.000</small>
+
+            <div class="total-box">
+                Total a cobrar: $<span id="precio-total">10000</span>
+            </div>
+
+            <label>Estado del pago:</label>
+            <div class="radio-group">
+                <label>
+                    <input type="radio" name="pago" value="pagado" required>
+                    <span>Ya lo pagó</span>
+                </label>
+                <label>
+                    <input type="radio" name="pago" value="al_recibir">
+                    <span>Abona al recibir</span>
+                </label>
+            </div>
+
+            <button type="submit" class="btn-submit">Anotar Venta</button>
+        </form>
+    </div>
+
+    <script>
+        // Función para ocultar o mostrar el domicilio
+        function toggleDireccion() {
+            // Buscamos si el radio de "delivery" está seleccionado
+            const esDelivery = document.querySelector('input[name="entrega"][value="delivery"]').checked;
+            const divDireccion = document.getElementById('div-direccion');
+            const inputDireccion = document.getElementById('direccion');
+
+            if (esDelivery) {
+                divDireccion.style.display = 'block'; // Muestra el campo
+                inputDireccion.required = true;       // Hace que sea obligatorio
+            } else {
+                divDireccion.style.display = 'none';  // Oculta el campo
+                inputDireccion.required = false;      // Quita la obligatoriedad
+                inputDireccion.value = '';            // Limpia lo que hayan escrito por error
+            }
+        }
+
+        // Función para calcular la promoción automáticamente
+        function calcularTotal() {
+            const inputCantidad = document.getElementById('cantidad');
+            let cantidad = parseInt(inputCantidad.value);
+
+            // Si borran el número o ponen letras, asumimos 0 para que no dé error "NaN"
+            if (isNaN(cantidad) || cantidad < 0) {
+                cantidad = 0;
+            }
+
+            // Lógica matemática de la promo: 
+            // Divide por 2 y redondea para abajo para saber cuántos "pares" hay y los multiplica por 18000.
+            // Luego el "resto" de dividir por 2 (que siempre será 1 o 0) lo multiplica por 10000.
+            const total = Math.floor(cantidad / 2) * 18000 + (cantidad % 2) * 10000;
+            
+            // Actualiza el texto grande en verde
+            document.getElementById('precio-total').innerText = total.toLocaleString('es-AR');
+        }
+
+        // Para estilizar visualmente los botones de radio seleccionados
+        document.querySelectorAll('input[type=radio]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                const name = this.name;
+                document.querySelectorAll(`input[name="${name}"]`).forEach(r => {
+                    r.parentElement.style.backgroundColor = r.checked ? '#cce5ff' : '#e9ecef';
+                    r.parentElement.style.borderColor = r.checked ? '#b8daff' : 'transparent';
+                });
+            });
+        });
+        
+        // Disparar el estilo inicial de los botones radio al cargar la página
+        window.dispatchEvent(new Event('change'));
+    </script>
+
+</body>
+</html>

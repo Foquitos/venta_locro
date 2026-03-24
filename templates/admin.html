@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Control - Locro</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        .dashboard-container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+        }
+        /* Tarjetas de resumen */
+        .resumen-cards {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+        }
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            flex: 1;
+            min-width: 200px;
+            text-align: center;
+        }
+        .card h3 { margin: 0 0 10px 0; color: #6c757d; font-size: 16px; }
+        .card .valor { font-size: 24px; font-weight: bold; color: #0056b3; }
+        .card.verde .valor { color: #28a745; }
+        .card.naranja .valor { color: #fd7e14; }
+
+        /* Tabla responsiva */
+        .table-responsive {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow-x: auto; /* Permite scroll horizontal en celulares */
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            white-space: nowrap;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+        th {
+            background-color: #f1f3f5;
+            color: #495057;
+        }
+        .badge {
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .badge-pagado { background-color: #d4edda; color: #155724; }
+        .badge-debe { background-color: #f8d7da; color: #721c24; }
+        .badge-delivery { background-color: #cce5ff; color: #004085; }
+        .badge-retiro { background-color: #e2e3e5; color: #383d41; }
+    </style>
+</head>
+<body>
+
+<div class="dashboard-container">
+    <h1>Administración de Ventas</h1>
+
+    <div class="resumen-cards">
+        <div class="card">
+            <h3>Total Porciones</h3>
+            <div class="valor">{{ total_porciones }}</div>
+        </div>
+        <div class="card verde">
+            <h3>Plata en Mano (Pagado)</h3>
+            <div class="valor">${{ total_recaudado_real }}</div>
+        </div>
+        <div class="card naranja">
+            <h3>A Cobrar al Entregar</h3>
+            <div class="valor">${{ plata_a_cobrar }}</div>
+        </div>
+        <div class="card">
+            <h3>Recaudación Proyectada</h3>
+            <div class="valor">${{ total_plata_general }}</div>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Vendedor</th>
+                    <th>Comprador</th>
+                    <th>Teléfono</th>
+                    <th>Cant.</th>
+                    <th>Total</th>
+                    <th>Estado</th>
+                    <th>Entrega</th>
+                    <th>Dirección (Si es delivery)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for venta in ventas %}
+                <tr>
+                    <td><strong>{{ venta.vendedor }}</strong></td>
+                    <td>{{ venta.nombre }} {{ venta.apellido }}</td>
+                    <td>{{ venta.telefono }}</td>
+                    <td>{{ venta.cantidad }}</td>
+                    <td>${{ venta.total }}</td>
+                    <td>
+                        {% if venta.pago == 'pagado' %}
+                            <span class="badge badge-pagado">Pagado</span>
+                        {% else %}
+                            <span class="badge badge-debe">Al recibir</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if venta.entrega == 'delivery' %}
+                            <span class="badge badge-delivery">Delivery</span>
+                        {% else %}
+                            <span class="badge badge-retiro">Retira</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ venta.direccion if venta.direccion else '-' }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="8" style="text-align: center; color: #6c757d;">Todavía no hay ninguna venta registrada.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+</body>
+</html>
