@@ -65,9 +65,36 @@ def calcular_precio(cantidad: int) -> int:
     return (cantidad // 2) * 18000 + (cantidad % 2) * 10000
 
 def limpiar_telefono(telefono: str) -> str:
+    # Eliminar cualquier prefijo de país si está presente
+    if telefono.startswith("+54"):
+        telefono = telefono[3:]
+    elif telefono.startswith("54") and len(telefono) > 10:
+        telefono = telefono[2:]
+
     num = re.sub(r'\D', '', telefono)
-    if num.startswith('0'): num = num[1:]
-    if num.startswith('15') and len(num) == 12: num = num[2:]
+
+    # Remover 9 (para celulares en el exterior/nacional si se incluyó el +549)
+    if num.startswith('9') and len(num) == 11:
+        num = num[1:]
+
+    # Remover el 0 inicial (prefijo interurbano)
+    if num.startswith('0'):
+        num = num[1:]
+
+    # Remover el 15 (prefijo de celular antiguo)
+    if '15' in num and len(num) >= 12: # Ej. 11 15 xxxx xxxx
+        num = num.replace('15', '', 1)
+    elif num.startswith('15') and len(num) == 10: # Esto no es válido usualmente (15xxxxxxxx)
+        pass # Podría ser un error, pero el regex lo filtrará más adelante si no son 10.
+
+    # Un paso general extra para remover '15' si quedó exactamente después de la característica
+    if len(num) == 12 and num[2:4] == '15':
+        num = num[:2] + num[4:]
+    elif len(num) == 13 and num[3:5] == '15':
+        num = num[:3] + num[5:]
+    elif len(num) == 14 and num[4:6] == '15':
+        num = num[:4] + num[6:]
+
     return num
 
 # 3. Rutas
@@ -93,14 +120,41 @@ async def procesar_venta(
 ):
     nombre_limpio = nombre.strip().title()
     apellido_limpio = apellido.strip().title()
+    
+    # Validaciones de nombre y apellido
+    if not re.match(r"^[A-Za-zÁ-Úá-úñÑ\s]{2,}$", nombre_limpio):
+        raise HTTPException(status_code=400, detail="El nombre debe contener al menos 2 letras y sin números ni caracteres especiales.")
+    if not re.match(r"^[A-Za-zÁ-Úá-úñÑ\s]{2,}$", apellido_limpio):
+        raise HTTPException(status_code=400, detail="El apellido debe contener al menos 2 letras y sin números ni caracteres especiales.")
+
+    # Validaciones de mail
+    mail_limpio = None
+    if mail and mail.strip():
+        mail_limpio = mail.strip()
+        if not re.match(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", mail_limpio):
+             raise HTTPException(status_code=400, detail="El correo electrónico no tiene un formato válido.")
+
+    # Validaciones de teléfono
     telefono_limpio = limpiar_telefono(telefono)
-    
     if len(telefono_limpio) != 10:
-        raise HTTPException(status_code=400, detail="El teléfono debe tener 10 números válidos (sin contar el 0 ni el 15).")
+        raise HTTPException(status_code=400, detail="El teléfono debe tener exactamente 10 números válidos (sin contar el 0, ni el 15, ni el +549).")
     
-    if entrega == "delivery" and not direccion:
-        raise HTTPException(status_code=400, detail="Debes ingresar una dirección para el delivery.")
+    # Validaciones de entrega y dirección
+    if entrega not in ["retiro", "delivery"]:
+        raise HTTPException(status_code=400, detail="Opción de entrega inválida.")
+
+    if entrega == "delivery":
+        if not direccion or len(direccion.strip()) < 5:
+            raise HTTPException(status_code=400, detail="Debes ingresar una dirección válida para el delivery (mínimo 5 caracteres).")
+        direccion = direccion.strip()
+    else:
+        direccion = None # Si retira, no nos importa la dirección
+
+    # Validaciones de pago
+    if pago not in ["pagado", "al_recibir"]:
+        raise HTTPException(status_code=400, detail="Opción de pago inválida.")
         
+    # Validaciones de cantidad
     if cantidad < 1:
          raise HTTPException(status_code=400, detail="La cantidad debe ser al menos 1.")
 
@@ -111,7 +165,7 @@ async def procesar_venta(
         cursor.execute('''
             INSERT INTO ventas (vendedor, nombre, apellido, telefono, mail, entrega, direccion, cantidad, total, pago)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (vendedor, nombre_limpio, apellido_limpio, telefono_limpio, mail, entrega, direccion, cantidad, total_a_pagar, pago))
+        ''', (vendedor, nombre_limpio, apellido_limpio, telefono_limpio, mail_limpio, entrega, direccion, cantidad, total_a_pagar, pago))
         conn.commit()
 
     return {
