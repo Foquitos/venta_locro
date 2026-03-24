@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Venta de Locro Scout</title>
+    <!-- SweetAlert2 para mostrar alertas bonitas -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         /* Diseño Mobile-First */
         body {
@@ -105,17 +107,17 @@
     <div class="container">
         <h2>Venta de Locro<br><small>Vendedor: {{ vendedor }}</small></h2>
         
-        <form action="/procesar_venta" method="post">
+        <form id="ventaForm">
             <input type="hidden" name="vendedor" value="{{ vendedor }}">
 
             <label for="nombre">Nombre del comprador:</label>
-            <input type="text" id="nombre" name="nombre" required placeholder="Ej: Juan">
+            <input type="text" id="nombre" name="nombre" required minlength="2" pattern="[A-Za-zÁ-Úá-úñÑ\s]+" title="Solo letras y espacios, mínimo 2 caracteres" placeholder="Ej: Juan">
 
             <label for="apellido">Apellido del comprador:</label>
-            <input type="text" id="apellido" name="apellido" required placeholder="Ej: Pérez">
+            <input type="text" id="apellido" name="apellido" required minlength="2" pattern="[A-Za-zÁ-Úá-úñÑ\s]+" title="Solo letras y espacios, mínimo 2 caracteres" placeholder="Ej: Pérez">
 
             <label for="telefono">Teléfono (Celular):</label>
-            <input type="tel" id="telefono" name="telefono" required placeholder="Ej: 1123456789" maxlength="15">
+            <input type="tel" id="telefono" name="telefono" required placeholder="Ej: 1123456789" minlength="10" maxlength="15" title="Deben ser 10 números (ej. 1123456789 sin el 15)">
 
             <label for="mail">Mail (Opcional):</label>
             <input type="email" id="mail" name="mail" placeholder="ejemplo@correo.com">
@@ -134,7 +136,7 @@
 
             <div id="div-direccion" style="display: none;">
                 <label for="direccion">Dirección de entrega:</label>
-                <input type="text" id="direccion" name="direccion" placeholder="Ej: Laprida 4500, Villa Martelli">
+                <input type="text" id="direccion" name="direccion" minlength="5" placeholder="Ej: Laprida 4500, Villa Martelli">
             </div>
 
             <label for="cantidad">Cantidad de porciones:</label>
@@ -211,6 +213,66 @@
         
         // Disparar el estilo inicial de los botones radio al cargar la página
         window.dispatchEvent(new Event('change'));
+
+        // Enviar formulario mediante AJAX usando fetch
+        document.getElementById('ventaForm').addEventListener('submit', function(e) {
+            e.preventDefault(); // Evita que la página se recargue
+
+            const form = e.target;
+            const formData = new FormData(form);
+            const submitBtn = form.querySelector('.btn-submit');
+
+            submitBtn.disabled = true;
+            submitBtn.innerText = "Enviando...";
+
+            fetch('/procesar_venta', {
+                method: 'POST',
+                body: formData
+            })
+            .then(async response => {
+                const data = await response.json();
+
+                if (response.ok) {
+                    // Muestra alerta de éxito bonita con SweetAlert2
+                    Swal.fire({
+                        title: '¡Genial!',
+                        text: data.mensaje + '\nComprador: ' + data.comprador + '\nTotal: ' + data.total_a_cobrar,
+                        icon: 'success',
+                        confirmButtonText: 'Anotar otra venta',
+                        confirmButtonColor: '#28a745'
+                    }).then(() => {
+                        // Limpia el formulario manteniendo el vendedor y restableciendo valores por defecto
+                        form.reset();
+                        document.querySelector('input[name="entrega"][value="retiro"]').checked = true;
+                        document.querySelector('input[name="pago"][value="pagado"]').checked = true;
+                        toggleDireccion();
+                        calcularTotal();
+                        window.dispatchEvent(new Event('change'));
+                    });
+                } else {
+                    // Muestra error
+                    Swal.fire({
+                        title: 'Ups, algo salió mal',
+                        text: data.detail || 'Ocurrió un error al procesar la venta.',
+                        icon: 'error',
+                        confirmButtonText: 'Corregir',
+                        confirmButtonColor: '#d33'
+                    });
+                }
+            })
+            .catch(error => {
+                Swal.fire({
+                    title: 'Error de conexión',
+                    text: 'No se pudo conectar con el servidor. Revisa tu internet.',
+                    icon: 'error',
+                    confirmButtonText: 'Entendido'
+                });
+            })
+            .finally(() => {
+                submitBtn.disabled = false;
+                submitBtn.innerText = "Anotar Venta";
+            });
+        });
     </script>
 
 </body>
