@@ -3,3 +3,5 @@ jinja2
 python-multipart
 uvicorn
 openpyxl
+psycopg2-binary
+python-dotenv
